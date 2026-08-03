@@ -348,7 +348,6 @@ label.field-label{display:block;font-size:11.5px;color:var(--text-faint);margin-
       <div class="nav-item" data-tab="density"><span class="nav-dot"></span>Keywords &amp; Heatmap</div>
 
       <div class="nav-label">Positioning</div>
-      <div class="nav-item" data-tab="career"><span class="nav-dot"></span>Career &amp; Salary</div>
       <div class="nav-item" data-tab="github"><span class="nav-dot"></span>GitHub Analyzer</div>
       <div class="nav-item" data-tab="compare"><span class="nav-dot"></span>Compare Resumes</div>
 
@@ -377,14 +376,6 @@ label.field-label{display:block;font-size:11.5px;color:var(--text-faint);margin-
           <option value="devops">DevOps Engineer</option>
           <option value="sec">Cybersecurity</option>
           <option value="pm">Product Manager</option>
-        </select>
-        <select class="select" id="country">
-          <option value="US">Salary: United States</option>
-          <option value="PK">Salary: Pakistan</option>
-          <option value="UK">Salary: United Kingdom</option>
-          <option value="EU">Salary: European Union</option>
-          <option value="SA">Salary: Saudi Arabia / GCC</option>
-          <option value="IN">Salary: India</option>
         </select>
         <button class="btn btn-primary" id="runBtn" disabled>Run Full Analysis</button>
       </div>
@@ -440,11 +431,7 @@ label.field-label{display:block;font-size:11.5px;color:var(--text-faint);margin-
             </div>
           </div>
 
-          <div class="grid grid-3" style="margin-top:22px;">
-            <div class="card" style="background:var(--surface-2);">
-              <div class="tiny-label">Career Level</div>
-              <div id="careerLevelMini" style="font-family:var(--display);font-size:15px;font-weight:600;"></div>
-            </div>
+          <div class="grid grid-2" style="margin-top:22px;">
             <div class="card" style="background:var(--surface-2);">
               <div class="tiny-label">Missing Sections</div>
               <div id="missingMini" style="font-size:13px;"></div>
@@ -532,25 +519,6 @@ label.field-label{display:block;font-size:11.5px;color:var(--text-faint);margin-
           <p class="sec-desc">Simulated 6-second scan — where a recruiter's eyes would linger vs. skip.</p>
           <div id="heatmapBlock"></div>
         </div>
-      </div>
-    </section>
-
-    <!-- CAREER & SALARY -->
-    <section class="panel" id="panel-career">
-      <div class="grid grid-2" style="align-items:start;">
-        <div class="card">
-          <h2 class="sec-title">Career Level Detection</h2>
-          <div id="careerBlock"></div>
-        </div>
-        <div class="card">
-          <h2 class="sec-title">Estimated Salary Range</h2>
-          <p class="sec-desc">Rough market bracket, not a guaranteed offer — based on detected level, region, and skill count.</p>
-          <div id="salaryBlock"></div>
-        </div>
-      </div>
-      <div class="card" style="margin-top:16px;">
-        <h2 class="sec-title">Industry-Specific Fit &amp; Career Recommendations</h2>
-        <div id="fitBlock"></div>
       </div>
     </section>
 
@@ -883,49 +851,6 @@ function analyzeGrammar(text){
     longSentences, repeats, flesch:Math.round(clamp(flesch,0,100)), issues, wordCount:words.length};
 }
 
-function detectCareerLevel(text){
-  const lower = text.toLowerCase();
-  let yearsMax = 0;
-  const yearMatches = [...text.matchAll(/(\d{1,2})\+?\s*years?/gi)];
-  for(const m of yearMatches) yearsMax = Math.max(yearsMax, parseInt(m[1],10));
-
-  // date range detection e.g. 2019 - 2023, 2020 - Present
-  const ranges = [...text.matchAll(/\b(19|20)\d{2}\b\s*[-–—to]+\s*(present|current|\b(19|20)\d{2}\b)/gi)];
-  let spanYears = 0;
-  const now = new Date().getFullYear();
-  for(const r of ranges){
-    const startY = parseInt(r[0].match(/\b(19|20)\d{2}\b/)[0],10);
-    const endStr = r[2];
-    const endY = /present|current/i.test(endStr) ? now : parseInt(endStr,10);
-    if(endY>=startY) spanYears += (endY-startY);
-  }
-  const estYears = Math.max(yearsMax, spanYears);
-
-  let level='Entry-Level / Junior', confidence=70;
-  if(/\b(senior|lead|principal|staff)\b/.test(lower)){level='Senior'; confidence=90;}
-  else if(/\b(intern|internship|student|fresher)\b/.test(lower) && estYears===0){level='Intern / Student'; confidence=85;}
-  else if(estYears>=8){level='Senior'; confidence=88;}
-  else if(estYears>=4){level='Mid-Level'; confidence=82;}
-  else if(estYears>=1){level='Junior'; confidence=78;}
-  else {level='Entry-Level / Junior'; confidence=65;}
-
-  return {level, confidence, estYears};
-}
-
-const SALARY_TABLE = {
-  US:{Intern:[35000,55000],'Entry-Level':[65000,90000],Junior:[75000,100000],'Mid-Level':[100000,140000],Senior:[140000,200000]},
-  PK:{Intern:[300000,600000],'Entry-Level':[600000,1200000],Junior:[900000,1800000],'Mid-Level':[1800000,3600000],Senior:[3600000,7200000]},
-  UK:{Intern:[18000,24000],'Entry-Level':[26000,35000],Junior:[30000,42000],'Mid-Level':[45000,65000],Senior:[65000,95000]},
-  EU:{Intern:[16000,24000],'Entry-Level':[28000,38000],Junior:[32000,45000],'Mid-Level':[45000,65000],Senior:[65000,95000]},
-  SA:{Intern:[24000,48000],'Entry-Level':[60000,96000],Junior:[84000,144000],'Mid-Level':[144000,240000],Senior:[240000,420000]},
-  IN:{Intern:[120000,300000],'Entry-Level':[400000,800000],Junior:[600000,1200000],'Mid-Level':[1200000,2400000],Senior:[2400000,4500000]}
-};
-function estimateSalary(level, country){
-  const key = level.includes('Intern')?'Intern':level.includes('Senior')?'Senior':level.includes('Mid')?'Mid-Level':level.includes('Junior')?'Junior':'Entry-Level';
-  const table = SALARY_TABLE[country] || SALARY_TABLE.US;
-  return {range:table[key], levelKey:key};
-}
-
 function computeRoleFit(resumeSkills){
   const set = new Set(resumeSkills);
   const scores = Object.entries(ROLE_PROFILES).map(([key,prof])=>{
@@ -963,7 +888,6 @@ function runFullAnalysis(text, jdText, roleKey){
   const verbs = analyzeActionVerbs(text);
   const star = analyzeSTAR(text);
   const grammar = analyzeGrammar(text);
-  const career = detectCareerLevel(text);
   const roleFit = computeRoleFit(skills);
   const sections = detectSections(text);
   const heatmap = computeHeatmap(sections, text, skills.length);
@@ -984,7 +908,7 @@ function runFullAnalysis(text, jdText, roleKey){
   const targetGaps = targetProfile.core.filter(s=>!skills.includes(s));
 
   return {
-    text, skills, ats, jd, freq, achievements, verbs, star, grammar, career, roleFit, sections,
+    text, skills, ats, jd, freq, achievements, verbs, star, grammar, roleFit, sections,
     heatmap, missingSections, techScore, expQuality, projectsScore, grammarScore, impactScore, overall,
     targetProfile, targetGaps, roleKey
   };
@@ -1001,7 +925,6 @@ function renderAll(){
   renderSkills(a);
   renderWriting(a);
   renderDensity(a);
-  renderCareer(a);
   renderChatSuggestions(a);
   renderReport(a);
 }
@@ -1040,7 +963,6 @@ function renderOverview(a){
       <div class="val">${pct(score)}</div>
     </div>`).join('');
 
-  document.getElementById('careerLevelMini').textContent = `${a.career.level}`;
   document.getElementById('missingMini').innerHTML = a.missingSections.length
     ? a.missingSections.map(s=>`<span class="pill pill-red" style="margin:2px;">${s}</span>`).join(' ')
     : `<span class="pill pill-green">None — all standard sections present</span>`;
@@ -1160,30 +1082,6 @@ function renderDensity(a){
       <div class="name">${h.name}</div>
       <div class="note">${esc(h.note)}</div>
     </div>`).join('');
-}
-
-function renderCareer(a){
-  document.getElementById('careerBlock').innerHTML = `
-    <div style="font-family:var(--display);font-size:24px;margin-bottom:6px;">${a.career.level}</div>
-    <div style="color:var(--text-dim);font-size:12.5px;">Confidence: ${a.career.confidence}% · Estimated ${a.career.estYears || '0'} year(s) of experience detected from dates/phrasing</div>
-  `;
-
-  const country = document.getElementById('country').value;
-  const sal = estimateSalary(a.career.level, country);
-  document.getElementById('salaryBlock').innerHTML = `
-    <div style="font-family:var(--display);font-size:24px;">${sal.range[0].toLocaleString()} – ${sal.range[1].toLocaleString()}</div>
-    <div style="color:var(--text-faint);font-size:11.5px;margin-top:6px;">Rough bracket for a ${sal.levelKey} profile in ${document.getElementById('country').selectedOptions[0].textContent.replace('Salary: ','')}. Actual offers vary by company, specialization, and negotiation.</div>
-  `;
-
-  document.getElementById('fitBlock').innerHTML = `
-    <table class="simple"><thead><tr><th>Role</th><th>Fit</th><th>Matched skills</th></tr></thead><tbody>
-    ${a.roleFit.map(r=>`<tr>
-      <td>${r.label}</td>
-      <td><span class="pill ${r.score>=60?'pill-green':r.score>=35?'pill-amber':'pill-red'}">${r.score}%</span></td>
-      <td style="color:var(--text-faint);">${r.overlap.slice(0,5).join(', ')||'—'}</td>
-    </tr>`).join('')}
-    </tbody></table>
-  `;
 }
 
 /* ---------- GitHub analyzer ---------- */
@@ -1306,17 +1204,12 @@ function answerChat(q){
     const v = verdictFor(a.overall);
     return `Overall score: ${a.overall}/100 — ${v.t}. That's a general signal, not a guarantee for any specific company's bar.`;
   }
-  if(/salary|pay|compensation/.test(lower)){
-    const country = document.getElementById('country').value;
-    const sal = estimateSalary(a.career.level, country);
-    return `Rough estimated range for a ${a.career.level} profile: ${sal.range[0].toLocaleString()}–${sal.range[1].toLocaleString()}. Treat this as a market ballpark, not a quote.`;
-  }
   if(/skill/.test(lower) && /missing|gap|add/.test(lower)){
     return a.targetGaps.length
       ? `Against ${a.targetProfile.label}, consider adding: ` + a.targetGaps.slice(0,8).join(', ')
       : `Strong skill coverage for ${a.targetProfile.label} already — no major gaps.`;
   }
-  return `I can answer questions about: ATS score, project section, experience rewrites, role fit, salary estimate, and skill gaps. Try one of the suggestion chips below.`;
+  return `I can answer questions about: ATS score, project section, experience rewrites, role fit, and skill gaps. Try one of the suggestion chips below.`;
 }
 function renderChatSuggestions(){
   const chips = ['Why is my ATS score low?','How do I improve my projects?','Rewrite my experience.','What jobs fit my resume?','Is this enough to apply?','What skills am I missing?'];
@@ -1334,13 +1227,9 @@ function renderReport(a){
       <h2 class="sec-title">Summary — Overall ${a.overall}/100</h2>
       <p class="sec-desc" style="color:${v.c}">${v.t}</p>
       <div class="grid grid-3">
-        <div><div class="tiny-label">Career Level</div><div>${a.career.level}</div></div>
         <div><div class="tiny-label">ATS Score</div><div>${a.ats.score}/100</div></div>
         <div><div class="tiny-label">Best Fit</div><div>${a.roleFit[0].label} (${a.roleFit[0].score}%)</div></div>
-      </div>
-      <div style="margin-top:14px;">
-        <div class="tiny-label">Missing Sections</div>
-        <div>${a.missingSections.length? a.missingSections.join(', ') : 'None'}</div>
+        <div><div class="tiny-label">Missing Sections</div><div>${a.missingSections.length? a.missingSections.join(', ') : 'None'}</div></div>
       </div>
       <div style="margin-top:14px;">
         <div class="tiny-label">Top skill gaps for ${a.targetProfile.label}</div>
@@ -1362,7 +1251,6 @@ function switchTab(tab){
     skills:['Skills & Gaps','What you have, and what a target role expects.'],
     writing:['Writing Quality','Bullet strength, verbs, STAR coverage, grammar and readability.'],
     density:['Keywords & Heatmap','Keyword frequency and simulated recruiter attention.'],
-    career:['Career & Salary','Seniority detection, salary bracket, and role fit.'],
     github:['GitHub Analyzer','Live public-repo signal via the GitHub API.'],
     compare:['Compare Resumes','Two resumes, scored side by side.'],
     chat:['Resume Chat','Ask questions grounded in your computed results.'],
@@ -1433,7 +1321,6 @@ document.getElementById('targetRole').addEventListener('change', ()=>{
     renderAll();
   }
 });
-document.getElementById('country').addEventListener('change', ()=>{ if(STATE.analysis) renderCareer(STATE.analysis); });
 
 document.getElementById('ghRunBtn').addEventListener('click', ()=>{
   const u = document.getElementById('ghUsername').value.trim();
