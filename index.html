@@ -1,16 +1,1467 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ResumeScan — AI Resume Analyzer</title>
-    <meta name="description" content="AI-powered ATS resume analyzer: scoring, job-description matching, bullet rewriting, GitHub portfolio scan, and resume comparison." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanline — AI Resume Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root{
+  --bg:#0a0a0f;
+  --bg-alt:#0d0d13;
+  --surface:#13131a;
+  --surface-2:#191922;
+  --border:#26262f;
+  --border-soft:#1c1c24;
+  --text:#e9e9f0;
+  --text-dim:#9797a8;
+  --text-faint:#5f5f70;
+  --violet:#7c5cff;
+  --violet-soft:#7c5cff33;
+  --pink:#ff5ca8;
+  --green:#4fd18b;
+  --amber:#f4b740;
+  --red:#f2617a;
+  --mono:'JetBrains Mono',monospace;
+  --display:'Space Grotesk',sans-serif;
+  --body:'Inter',sans-serif;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--body);
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(var(--border-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+  background-size:42px 42px;
+  opacity:.25;
+  pointer-events:none;
+  z-index:0;
+  mask-image:radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 90%);
+}
+::selection{background:var(--violet-soft);color:#fff;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:#37374a;}
+a{color:var(--violet);}
+button{font-family:var(--body);}
+:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+/* ===== APP SHELL ===== */
+.app{
+  display:grid;
+  grid-template-columns:260px 1fr;
+  min-height:100vh;
+  position:relative;
+  z-index:1;
+}
+.sidebar{
+  border-right:1px solid var(--border);
+  background:linear-gradient(180deg, var(--bg-alt), var(--bg));
+  padding:22px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+  position:sticky;
+  top:0;
+  height:100vh;
+}
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:2px 6px 14px;
+  border-bottom:1px solid var(--border-soft);
+}
+.brand-mark{
+  width:30px;height:30px;flex:none;
+  border-radius:7px;
+  background:linear-gradient(135deg,var(--violet),var(--pink));
+  position:relative;
+  overflow:hidden;
+}
+.brand-mark::after{
+  content:"";
+  position:absolute;left:0;right:0;top:0;height:2px;
+  background:rgba(255,255,255,.85);
+  box-shadow:0 0 8px 2px rgba(255,255,255,.7);
+  animation:scanmark 2.4s linear infinite;
+}
+@keyframes scanmark{0%{top:-10%}100%{top:110%}}
+.brand-name{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.2px;}
+.brand-sub{font-size:10.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1.2px;margin-top:1px;}
+
+.nav{display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto;}
+.nav-label{font-size:10px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text-faint);margin:14px 8px 6px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;border-radius:8px;
+  color:var(--text-dim);font-size:13px;font-weight:500;
+  cursor:pointer;border:1px solid transparent;
+  transition:background .15s, color .15s, border-color .15s;
+  white-space:nowrap;
+}
+.nav-item:hover{background:var(--surface);color:var(--text);}
+.nav-item.active{background:var(--surface-2);color:var(--text);border-color:var(--border);}
+.nav-item.active .nav-dot{background:var(--violet);box-shadow:0 0 0 3px var(--violet-soft);}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);flex:none;}
+.nav-item .badge{
+  margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text-faint);
+}
+
+.sidebar-foot{
+  border-top:1px solid var(--border-soft);
+  padding-top:12px;font-size:11px;color:var(--text-faint);
+}
+
+/* ===== MAIN ===== */
+.main{padding:26px 32px 60px;min-width:0;}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:16px;flex-wrap:wrap;
+  margin-bottom:22px;
+}
+.topbar h1{font-family:var(--display);font-size:20px;font-weight:600;}
+.topbar p{color:var(--text-dim);font-size:12.5px;margin-top:2px;}
+.topbar-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+
+.select, .input, textarea{
+  background:var(--surface);
+  border:1px solid var(--border);
+  color:var(--text);
+  border-radius:8px;
+  padding:8px 12px;
+  font-size:13px;
+  font-family:var(--body);
+}
+.select{cursor:pointer;}
+textarea{width:100%;resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.55;}
+
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 16px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);font-size:13px;font-weight:600;
+  cursor:pointer;transition:transform .1s, border-color .15s, background .15s;
+}
+.btn:hover{border-color:#3a3a4a;background:var(--surface-2);}
+.btn:active{transform:scale(.98);}
+.btn-primary{
+  background:linear-gradient(135deg,var(--violet),#5e3fe0);
+  border-color:transparent;color:#fff;
+  box-shadow:0 6px 20px -8px rgba(124,92,255,.7);
+}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-ghost{background:transparent;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px;
+}
+.grid{display:grid;gap:16px;}
+.grid-2{grid-template-columns:1fr 1fr;}
+.grid-3{grid-template-columns:repeat(3,1fr);}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+@media(max-width:1000px){.grid-2,.grid-3,.grid-4{grid-template-columns:1fr;}}
+
+.panel{display:none;animation:fadein .25s ease;}
+.panel.active{display:block;}
+@keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+/* ===== UPLOAD ===== */
+.dropzone{
+  border:1.5px dashed var(--border);
+  border-radius:var(--radius);
+  padding:34px 20px;
+  text-align:center;
+  cursor:pointer;
+  transition:border-color .15s, background .15s;
+  position:relative;
+}
+.dropzone:hover, .dropzone.drag{border-color:var(--violet);background:#7c5cff0d;}
+.dropzone .dz-icon{
+  width:44px;height:44px;margin:0 auto 12px;border-radius:10px;
+  background:var(--surface-2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+}
+.dropzone h3{font-family:var(--display);font-size:14.5px;margin-bottom:4px;}
+.dropzone p{color:var(--text-faint);font-size:12px;}
+.file-chip{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--surface-2);border:1px solid var(--border);
+  padding:6px 10px;border-radius:20px;font-size:12px;margin-top:12px;
+}
+.file-chip .x{cursor:pointer;color:var(--text-faint);}
+.file-chip .x:hover{color:var(--red);}
+
+/* ===== SCORES ===== */
+.score-ring-wrap{display:flex;align-items:center;gap:20px;}
+.score-ring{position:relative;width:128px;height:128px;flex:none;}
+.score-ring svg{transform:rotate(-90deg);}
+.score-ring .bg{stroke:var(--border);}
+.score-ring .fg{stroke:url(#scoreGrad);stroke-linecap:round;transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1);}
+.score-ring .num{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.score-ring .num b{font-family:var(--display);font-size:30px;}
+.score-ring .num span{font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;}
+
+.score-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border-soft);}
+.score-row:last-child{border-bottom:none;}
+.score-row .label{width:150px;font-size:12.5px;color:var(--text-dim);flex:none;}
+.score-row .bar-track{flex:1;height:7px;background:var(--surface-2);border-radius:6px;overflow:hidden;}
+.score-row .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--violet),var(--pink));}
+.score-row .val{width:38px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--text-dim);flex:none;}
+
+.pill{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;
+  font-family:var(--mono);
+}
+.pill-green{background:#4fd18b1f;color:var(--green);}
+.pill-amber{background:#f4b7401f;color:var(--amber);}
+.pill-red{background:#f2617a1f;color:var(--red);}
+.pill-violet{background:var(--violet-soft);color:#b7a4ff;}
+
+h2.sec-title{font-family:var(--display);font-size:15px;font-weight:600;margin-bottom:4px;}
+.sec-desc{color:var(--text-faint);font-size:12px;margin-bottom:16px;}
+
+.kw-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:6px;font-size:12px;font-family:var(--mono);
+  border:1px solid var(--border);margin:3px;
+}
+.kw-found{background:#4fd18b12;border-color:#4fd18b40;color:var(--green);}
+.kw-missing{background:#f2617a12;border-color:#f2617a40;color:var(--red);}
+
+.bullet-block{border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px;background:var(--surface-2);}
+.bullet-before{color:var(--text-dim);font-family:var(--mono);font-size:12.5px;text-decoration:line-through;text-decoration-color:#f2617a80;}
+.bullet-after{color:var(--green);font-family:var(--mono);font-size:12.5px;margin-top:6px;}
+.tiny-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:3px;}
+
+.heat-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-soft);}
+.heat-row:last-child{border-bottom:none;}
+.heat-dot{width:12px;height:12px;border-radius:3px;flex:none;}
+.heat-row .name{width:140px;font-size:12.5px;flex:none;}
+.heat-row .note{color:var(--text-faint);font-size:11.5px;}
+
+.chat-window{
+  height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;
+  padding:16px;background:var(--surface-2);display:flex;flex-direction:column;gap:12px;
+}
+.msg{max-width:78%;padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.5;}
+.msg.user{align-self:flex-end;background:linear-gradient(135deg,var(--violet),#5e3fe0);color:#fff;border-bottom-right-radius:3px;}
+.msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:3px;white-space:pre-wrap;}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.chip{
+  border:1px solid var(--border);background:var(--surface);color:var(--text-dim);
+  padding:6px 11px;border-radius:20px;font-size:11.5px;cursor:pointer;
+}
+.chip:hover{border-color:var(--violet);color:var(--text);}
+
+.empty{
+  text-align:center;padding:60px 20px;color:var(--text-faint);
+}
+.empty h3{font-family:var(--display);color:var(--text-dim);margin-bottom:6px;font-size:15px;}
+
+.scan-preview{
+  position:relative;border:1px solid var(--border);border-radius:10px;
+  background:var(--surface-2);padding:18px;max-height:340px;overflow-y:auto;
+  font-family:var(--mono);font-size:11.5px;line-height:1.7;color:var(--text-dim);
+  white-space:pre-wrap;
+}
+.scan-preview::before{
+  content:"";position:absolute;left:0;right:0;top:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--violet),var(--pink),transparent);
+  box-shadow:0 0 12px 2px rgba(124,92,255,.6);
+  animation:scansweep 2.2s ease-in-out infinite;
+  opacity:0;
+}
+.scan-preview.scanning::before{opacity:1;}
+@keyframes scansweep{0%{top:0}100%{top:100%}}
+
+table.simple{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.simple th{text-align:left;color:var(--text-faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:6px 10px;border-bottom:1px solid var(--border);}
+table.simple td{padding:8px 10px;border-bottom:1px solid var(--border-soft);}
+table.simple tr:last-child td{border-bottom:none;}
+
+.gh-repo{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:8px;background:var(--surface-2);}
+.gh-repo .name{font-family:var(--mono);font-weight:600;font-size:12.5px;}
+.gh-repo .desc{color:var(--text-faint);font-size:11.5px;margin-top:2px;}
+.gh-repo .meta{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-dim);}
+
+label.field-label{display:block;font-size:11.5px;color:var(--text-faint);margin-bottom:6px;text-transform:uppercase;letter-spacing:.6px;}
+
+@media print{
+  .sidebar, .topbar-actions, .no-print{display:none !important;}
+  .app{display:block;}
+  .main{padding:0;}
+  body::before{display:none;}
+  .card{break-inside:avoid;border:1px solid #ccc;}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0"><defs>
+  <linearGradient id="scoreGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#7c5cff"/>
+    <stop offset="100%" stop-color="#ff5ca8"/>
+  </linearGradient>
+</defs></svg>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <div class="brand-name">Scanline</div>
+        <div class="brand-sub">Resume Intelligence</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <div class="nav-label">Input</div>
+      <div class="nav-item active" data-tab="overview"><span class="nav-dot"></span>Overview</div>
+
+      <div class="nav-label">Diagnostics</div>
+      <div class="nav-item" data-tab="ats"><span class="nav-dot"></span>ATS &amp; JD Match</div>
+      <div class="nav-item" data-tab="skills"><span class="nav-dot"></span>Skills &amp; Gaps</div>
+      <div class="nav-item" data-tab="writing"><span class="nav-dot"></span>Writing Quality</div>
+      <div class="nav-item" data-tab="density"><span class="nav-dot"></span>Keywords &amp; Heatmap</div>
+
+      <div class="nav-label">Positioning</div>
+      <div class="nav-item" data-tab="career"><span class="nav-dot"></span>Career &amp; Salary</div>
+      <div class="nav-item" data-tab="github"><span class="nav-dot"></span>GitHub Analyzer</div>
+      <div class="nav-item" data-tab="compare"><span class="nav-dot"></span>Compare Resumes</div>
+
+      <div class="nav-label">Assistant</div>
+      <div class="nav-item" data-tab="chat"><span class="nav-dot"></span>Resume Chat</div>
+      <div class="nav-item" data-tab="export"><span class="nav-dot"></span>Export Report</div>
+    </nav>
+
+    <div class="sidebar-foot">
+      Runs entirely in your browser.<br>Nothing is uploaded anywhere.
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="pageTitle">Overview</h1>
+        <p id="pageDesc">Upload a resume to generate a full hiring-manager style breakdown.</p>
+      </div>
+      <div class="topbar-actions no-print">
+        <select class="select" id="targetRole">
+          <option value="ai">AI / ML Engineer</option>
+          <option value="ds">Data Scientist</option>
+          <option value="swe">Software Engineer</option>
+          <option value="devops">DevOps Engineer</option>
+          <option value="sec">Cybersecurity</option>
+          <option value="pm">Product Manager</option>
+        </select>
+        <select class="select" id="country">
+          <option value="US">Salary: United States</option>
+          <option value="PK">Salary: Pakistan</option>
+          <option value="UK">Salary: United Kingdom</option>
+          <option value="EU">Salary: European Union</option>
+          <option value="SA">Salary: Saudi Arabia / GCC</option>
+          <option value="IN">Salary: India</option>
+        </select>
+        <button class="btn btn-primary" id="runBtn" disabled>Run Full Analysis</button>
+      </div>
+    </div>
+
+    <!-- OVERVIEW / INPUT -->
+    <section class="panel active" id="panel-overview">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">Resume</h2>
+          <p class="sec-desc">Upload a .pdf, .docx, or .txt file, or paste the text directly.</p>
+          <div class="dropzone" id="dz1">
+            <div class="dz-icon">📄</div>
+            <h3>Drop resume here or click to browse</h3>
+            <p>PDF, DOCX, or TXT — parsed locally in your browser</p>
+            <input type="file" id="fileInput1" accept=".pdf,.docx,.txt" style="display:none">
+          </div>
+          <div id="fileChip1"></div>
+          <div style="margin-top:14px;">
+            <label class="field-label">Or paste resume text</label>
+            <textarea id="resumeText" rows="8" placeholder="Paste resume text here..."></textarea>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="sec-title">Job Description <span style="color:var(--text-faint);font-weight:400;">(optional)</span></h2>
+          <p class="sec-desc">Paste a job posting to unlock match scoring against a real role.</p>
+          <textarea id="jdText" rows="14" placeholder="Paste job description text here..."></textarea>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;" id="dashCard">
+        <div class="empty" id="overviewEmpty">
+          <h3>No analysis yet</h3>
+          <p>Add a resume above, then click "Run Full Analysis" in the top right.</p>
+        </div>
+        <div id="overviewResults" style="display:none;">
+          <div class="grid" style="grid-template-columns:220px 1fr;align-items:center;gap:28px;">
+            <div class="score-ring-wrap">
+              <div class="score-ring">
+                <svg width="128" height="128" viewBox="0 0 128 128">
+                  <circle class="bg" cx="64" cy="64" r="54" stroke-width="10" fill="none"/>
+                  <circle class="fg" id="overallRingFg" cx="64" cy="64" r="54" stroke-width="10" fill="none"
+                    stroke-dasharray="339" stroke-dashoffset="339"/>
+                </svg>
+                <div class="num"><b id="overallScoreNum">--</b><span>/ 100</span></div>
+              </div>
+            </div>
+            <div>
+              <div id="overallVerdict" style="font-family:var(--display);font-size:16px;font-weight:600;margin-bottom:6px;"></div>
+              <div id="overallSub" style="color:var(--text-dim);font-size:12.5px;margin-bottom:14px;"></div>
+              <div id="categoryScores"></div>
+            </div>
+          </div>
+
+          <div class="grid grid-3" style="margin-top:22px;">
+            <div class="card" style="background:var(--surface-2);">
+              <div class="tiny-label">Career Level</div>
+              <div id="careerLevelMini" style="font-family:var(--display);font-size:15px;font-weight:600;"></div>
+            </div>
+            <div class="card" style="background:var(--surface-2);">
+              <div class="tiny-label">Missing Sections</div>
+              <div id="missingMini" style="font-size:13px;"></div>
+            </div>
+            <div class="card" style="background:var(--surface-2);">
+              <div class="tiny-label">Best-Fit Roles</div>
+              <div id="fitMini" style="font-size:13px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ATS & JD MATCH -->
+    <section class="panel" id="panel-ats">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">ATS Compatibility</h2>
+          <p class="sec-desc">Structural checks a parser bot would run before a human ever sees this resume.</p>
+          <div id="atsScoreBlock"></div>
+        </div>
+        <div class="card">
+          <h2 class="sec-title">Job Description Match</h2>
+          <p class="sec-desc">Paste a JD on the Overview tab to compute this.</p>
+          <div id="jdMatchBlock"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h2 class="sec-title">Standard Sections Detected</h2>
+        <div id="sectionDetectBlock"></div>
+      </div>
+    </section>
+
+    <!-- SKILLS & GAPS -->
+    <section class="panel" id="panel-skills">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">Skills Found</h2>
+          <p class="sec-desc" id="skillsFoundDesc">Detected from resume text against a curated technical skill bank.</p>
+          <div id="skillsFoundBlock"></div>
+        </div>
+        <div class="card">
+          <h2 class="sec-title">Recommended Next Skills</h2>
+          <p class="sec-desc" id="skillsGapDesc">Gaps against the selected target role.</p>
+          <div id="skillsGapBlock"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WRITING QUALITY -->
+    <section class="panel" id="panel-writing">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">Achievement &amp; Bullet Rewriter</h2>
+          <p class="sec-desc">Weak bullets flagged, with a stronger structure suggested. Fill in the bracketed metric yourself — never invent numbers.</p>
+          <div id="bulletBlock"></div>
+        </div>
+        <div>
+          <div class="card">
+            <h2 class="sec-title">Action Verb Analysis</h2>
+            <div id="verbBlock"></div>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <h2 class="sec-title">STAR Method Coverage</h2>
+            <div id="starBlock"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h2 class="sec-title">Grammar &amp; Readability</h2>
+        <div id="grammarBlock"></div>
+      </div>
+    </section>
+
+    <!-- KEYWORD DENSITY / HEATMAP -->
+    <section class="panel" id="panel-density">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">Keyword Density</h2>
+          <p class="sec-desc">Frequency of detected skill keywords. Flags stuffing if any single term is overused.</p>
+          <div id="densityBlock"></div>
+        </div>
+        <div class="card">
+          <h2 class="sec-title">Recruiter Attention Heatmap</h2>
+          <p class="sec-desc">Simulated 6-second scan — where a recruiter's eyes would linger vs. skip.</p>
+          <div id="heatmapBlock"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CAREER & SALARY -->
+    <section class="panel" id="panel-career">
+      <div class="grid grid-2" style="align-items:start;">
+        <div class="card">
+          <h2 class="sec-title">Career Level Detection</h2>
+          <div id="careerBlock"></div>
+        </div>
+        <div class="card">
+          <h2 class="sec-title">Estimated Salary Range</h2>
+          <p class="sec-desc">Rough market bracket, not a guaranteed offer — based on detected level, region, and skill count.</p>
+          <div id="salaryBlock"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px;">
+        <h2 class="sec-title">Industry-Specific Fit &amp; Career Recommendations</h2>
+        <div id="fitBlock"></div>
+      </div>
+    </section>
+
+    <!-- GITHUB ANALYZER -->
+    <section class="panel" id="panel-github">
+      <div class="card">
+        <h2 class="sec-title">GitHub Analyzer</h2>
+        <p class="sec-desc">Live-fetches public repo data via the GitHub API (no auth required, subject to GitHub's public rate limit).</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <input class="input" id="ghUsername" placeholder="github username" style="max-width:240px;">
+          <button class="btn btn-primary" id="ghRunBtn">Analyze GitHub</button>
+        </div>
+        <div id="ghResult" style="margin-top:18px;"></div>
+      </div>
+    </section>
+
+    <!-- COMPARE -->
+    <section class="panel" id="panel-compare">
+      <div class="card">
+        <h2 class="sec-title">Compare Two Resumes</h2>
+        <p class="sec-desc">Upload or paste a second resume to see which scores stronger and why.</p>
+        <div class="grid grid-2">
+          <div>
+            <div class="dropzone" id="dz2">
+              <div class="dz-icon">📄</div>
+              <h3>Drop second resume here</h3>
+              <p>PDF, DOCX, or TXT</p>
+              <input type="file" id="fileInput2" accept=".pdf,.docx,.txt" style="display:none">
+            </div>
+            <div id="fileChip2"></div>
+            <textarea id="resumeText2" rows="6" style="margin-top:10px;" placeholder="Or paste second resume text..."></textarea>
+          </div>
+          <div>
+            <button class="btn btn-primary" id="compareBtn" style="margin-bottom:12px;">Compare</button>
+            <div id="compareResult"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAT -->
+    <section class="panel" id="panel-chat">
+      <div class="card">
+        <h2 class="sec-title">Resume Chat</h2>
+        <p class="sec-desc">Ask about your analysis. This is rule-based over your computed results — not a live model call.</p>
+        <div class="chat-window" id="chatWindow"></div>
+        <div class="chip-row" id="chatSuggestions"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <input class="input" id="chatInput" style="flex:1;" placeholder="Ask about your resume...">
+          <button class="btn btn-primary" id="chatSend">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- EXPORT -->
+    <section class="panel" id="panel-export">
+      <div class="card">
+        <h2 class="sec-title">Export Report</h2>
+        <p class="sec-desc">Generates a clean printable summary of everything above. Use your browser's "Save as PDF" destination.</p>
+        <button class="btn btn-primary" id="printBtn">Print / Save as PDF</button>
+        <div id="reportPreview" style="margin-top:20px;"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   SCANLINE — client-side resume analysis engine
+   Everything below is real heuristic analysis over the actual
+   text the user provides. Nothing here is a live LLM call.
+============================================================ */
+
+const STATE = {
+  resumeText:'', resumeName:'',
+  resumeText2:'', resumeName2:'',
+  jdText:'',
+  analysis:null, analysis2:null
+};
+
+/* ---------- utils ---------- */
+function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function clamp(n,a,b){return Math.max(a,Math.min(b,n));}
+function pct(n){return Math.round(clamp(n,0,100));}
+
+/* ---------- keyword banks ---------- */
+const SKILL_BANK = {
+  languages:['python','javascript','typescript','java','c++','c#','go','rust','ruby','php','swift','kotlin','sql','r','scala','bash','matlab'],
+  ai_ml:['tensorflow','pytorch','keras','scikit-learn','opencv','nlp','computer vision','llm','langchain','hugging face','transformers','xgboost','pandas','numpy','deep learning','machine learning','neural network','cnn','rnn','yolo','mlops','generative ai','rag','fine-tuning','reinforcement learning'],
+  web:['react','next.js','vue','angular','svelte','node.js','express','django','flask','fastapi','graphql','rest api','html','css','tailwind','webpack','redux'],
+  cloud_devops:['aws','azure','gcp','docker','kubernetes','terraform','ci/cd','jenkins','github actions','ansible','linux','nginx','microservices','serverless'],
+  data:['mysql','postgresql','mongodb','redis','elasticsearch','spark','hadoop','airflow','snowflake','power bi','tableau','etl','data pipeline','big data'],
+  security:['penetration testing','siem','owasp','nmap','wireshark','burp suite','iso 27001','vulnerability assessment','incident response','cryptography','zero trust','soc'],
+  pm:['roadmap','stakeholder management','agile','scrum','jira','user research','a/b testing','go-to-market','okrs','product strategy','wireframing','figma'],
+  soft:['leadership','communication','collaboration','mentoring','project management','problem solving','cross-functional']
+};
+const ALL_SKILLS = Object.values(SKILL_BANK).flat();
+
+const ROLE_PROFILES = {
+  ai:{label:'AI / ML Engineer', core:[...SKILL_BANK.ai_ml,'python','sql','docker','aws','fastapi','pytorch','tensorflow']},
+  ds:{label:'Data Scientist', core:['python','r','sql','pandas','numpy','scikit-learn','tableau','power bi','statistics','machine learning','etl','spark']},
+  swe:{label:'Software Engineer', core:[...SKILL_BANK.web,'python','java','c++','git','rest api','docker','sql']},
+  devops:{label:'DevOps Engineer', core:[...SKILL_BANK.cloud_devops,'python','bash','linux','git']},
+  sec:{label:'Cybersecurity', core:SKILL_BANK.security},
+  pm:{label:'Product Manager', core:SKILL_BANK.pm}
+};
+
+const WEAK_VERBS = ['helped','worked','did','responsible for','assisted','involved in','participated in','tasked with','handled'];
+const STRONG_VERB_MAP = {
+  'helped':'Facilitated','worked':'Developed','did':'Executed','responsible for':'Managed',
+  'assisted':'Supported','involved in':'Contributed to','participated in':'Drove',
+  'tasked with':'Owned','handled':'Managed','made':'Built','worked on':'Developed'
+};
+const STRONG_VERBS = ['designed','built','optimized','engineered','automated','deployed','architected','led','launched','scaled','implemented','delivered','reduced','increased','streamlined','spearheaded'];
+
+const SECTION_PATTERNS = {
+  summary:/\b(summary|profile|objective|about me)\b/i,
+  experience:/\b(experience|employment|work history)\b/i,
+  education:/\b(education|academic)\b/i,
+  skills:/\b(skills|technical skills|competencies)\b/i,
+  projects:/\b(projects?)\b/i,
+  certifications:/\b(certifications?|licenses?)\b/i,
+  links:/(github\.com|linkedin\.com|https?:\/\/)/i
+};
+
+/* ---------- file parsing ---------- */
+async function extractText(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+  if(ext === 'txt'){
+    return await file.text();
+  }
+  if(ext === 'pdf'){
+    const buf = await file.arrayBuffer();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    let out = '';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      out += content.items.map(it=>it.str).join(' ') + '\n';
+    }
+    return out;
+  }
+  if(ext === 'docx'){
+    const buf = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({arrayBuffer:buf});
+    return result.value;
+  }
+  throw new Error('Unsupported file type: '+ext);
+}
+
+/* ---------- core analyzers ---------- */
+function detectSections(text){
+  const found = {};
+  for(const [k,re] of Object.entries(SECTION_PATTERNS)) found[k] = re.test(text);
+  return found;
+}
+
+function detectSkills(text){
+  const lower = text.toLowerCase();
+  const found = [];
+  for(const s of ALL_SKILLS){
+    const re = new RegExp('(^|[^a-z0-9])'+s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z0-9]|$)','i');
+    if(re.test(lower)) found.push(s);
+  }
+  return [...new Set(found)];
+}
+
+function keywordFrequency(text){
+  const lower = text.toLowerCase();
+  const freq = {};
+  for(const s of ALL_SKILLS){
+    const re = new RegExp('(^|[^a-z0-9])'+s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z0-9]|$)','gi');
+    const matches = lower.match(re);
+    if(matches && matches.length) freq[s] = matches.length;
+  }
+  return freq;
+}
+
+function getBullets(text){
+  return text.split('\n').map(l=>l.trim())
+    .filter(l=>/^[-*•▪●○]/.test(l) || (/^[A-Z]/.test(l) && l.length>25 && l.length<220));
+}
+
+function analyzeContact(text){
+  const email = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text);
+  const phone = /(\+?\d[\d\s\-\(\)]{7,}\d)/.test(text);
+  const linkedin = /linkedin\.com/i.test(text);
+  const github = /github\.com/i.test(text);
+  return {email,phone,linkedin,github};
+}
+
+function detectFormattingRisk(text){
+  // heuristics for things that break ATS parsers in real files: excessive tabs/columns, weird symbols, no line breaks
+  const lines = text.split('\n');
+  const avgLineLen = lines.reduce((a,l)=>a+l.length,0)/Math.max(lines.length,1);
+  const manyTabs = (text.match(/\t/g)||[]).length > lines.length*0.3;
+  const veryLongLines = lines.some(l=>l.length>500);
+  const veryFewLines = lines.length < 8;
+  const oddSymbols = (text.match(/[^\x00-\x7F]/g)||[]).length > text.length*0.05;
+  return {manyTabs, veryLongLines, veryFewLines, oddSymbols, avgLineLen};
+}
+
+function computeATS(text){
+  const contact = analyzeContact(text);
+  const sections = detectSections(text);
+  const fmt = detectFormattingRisk(text);
+  let score = 100;
+  const notes = [];
+
+  if(!contact.email){score-=12; notes.push({t:'No email address detected', s:-12});}
+  if(!contact.phone){score-=6; notes.push({t:'No phone number detected', s:-6});}
+  if(!contact.linkedin && !contact.github){score-=6; notes.push({t:'No LinkedIn or GitHub link found', s:-6});}
+  if(!sections.experience){score-=15; notes.push({t:'No clear "Experience" section header', s:-15});}
+  if(!sections.education){score-=8; notes.push({t:'No clear "Education" section header', s:-8});}
+  if(!sections.skills){score-=10; notes.push({t:'No clear "Skills" section header', s:-10});}
+  if(fmt.manyTabs){score-=10; notes.push({t:'Heavy tab usage — often breaks column-based ATS parsing', s:-10});}
+  if(fmt.veryFewLines){score-=10; notes.push({t:'Very few line breaks — may indicate a table/text-box heavy layout', s:-10});}
+  if(fmt.oddSymbols){score-=6; notes.push({t:'Unusual non-standard characters detected (icons/symbols)', s:-6});}
+  if(text.trim().length < 400){score-=10; notes.push({t:'Resume content is unusually short for full parsing', s:-10});}
+
+  if(notes.length===0) notes.push({t:'No structural red flags detected', s:0});
+  return {score:pct(score), notes, contact, sections, fmt};
+}
+
+function computeJDMatch(resumeText, jdText){
+  if(!jdText || !jdText.trim()) return null;
+  const resumeSkills = new Set(detectSkills(resumeText));
+  const jdSkills = new Set(detectSkills(jdText));
+  // also pull capitalized/technical-looking tokens from JD not in bank, as "custom keywords"
+  const customTokens = [...new Set((jdText.match(/\b[A-Z][a-zA-Z0-9+.#]{2,}\b/g)||[])
+    .map(t=>t.toLowerCase())
+    .filter(t=>!ALL_SKILLS.includes(t) && !['the','and','for','with','you','our','are','this','job','role','will'].includes(t)))]
+    .slice(0,12);
+
+  const found = [...jdSkills].filter(s=>resumeSkills.has(s));
+  const missing = [...jdSkills].filter(s=>!resumeSkills.has(s));
+  const matchPct = jdSkills.size ? pct((found.length/jdSkills.size)*100) : 50;
+
+  return {matchPct, found, missing, jdSkillCount:jdSkills.size, customTokens};
+}
+
+function suggestRewrite(bullet){
+  let b = bullet.replace(/^[-*•▪●○]\s*/,'').trim();
+  let lower = b.toLowerCase();
+  let leadVerbHit = null;
+  for(const wv of WEAK_VERBS){
+    if(lower.startsWith(wv)){leadVerbHit = wv; break;}
+  }
+  const hasNumber = /\d/.test(b);
+  let rewritten = b;
+  if(leadVerbHit){
+    const strong = STRONG_VERB_MAP[leadVerbHit] || 'Delivered';
+    rewritten = strong + ' ' + b.slice(leadVerbHit.length).trim();
+  } else if(!/^[A-Z][a-z]+ed\b|^[A-Z][a-z]+d\b/.test(b)){
+    // no strong-looking leading verb at all
+    rewritten = 'Delivered ' + b.charAt(0).toLowerCase() + b.slice(1);
+  }
+  if(!hasNumber){
+    rewritten += ' [quantify: add a metric, e.g. %, time saved, or scale]';
+  }
+  const weak = !!leadVerbHit || !hasNumber;
+  return {original:b, rewritten, weak, hasNumber, leadVerbHit};
+}
+
+function analyzeAchievements(text){
+  const bullets = getBullets(text);
+  return bullets.slice(0,14).map(suggestRewrite);
+}
+
+function analyzeActionVerbs(text){
+  const bullets = getBullets(text);
+  let weakCount=0, strongCount=0;
+  const weakHits=[], strongHits=[];
+  for(const b of bullets){
+    const lower = b.toLowerCase();
+    let matchedWeak = WEAK_VERBS.find(w=>lower.includes(w));
+    let matchedStrong = STRONG_VERBS.find(w=>lower.startsWith(w));
+    if(matchedStrong){strongCount++; strongHits.push(matchedStrong);}
+    else if(matchedWeak){weakCount++; weakHits.push(matchedWeak);}
+  }
+  return {bulletsTotal:bullets.length, weakCount, strongCount, weakHits:[...new Set(weakHits)], strongHits:[...new Set(strongHits)]};
+}
+
+function analyzeSTAR(text){
+  const bullets = getBullets(text);
+  const results = bullets.slice(0,10).map(b=>{
+    const hasAction = STRONG_VERBS.some(v=>b.toLowerCase().startsWith(v)) || WEAK_VERBS.some(v=>b.toLowerCase().includes(v));
+    const hasResult = /\d/.test(b) || /\b(result|led to|achiev|improv|reduc|increas|grew|saved)\b/i.test(b);
+    const hasContext = /\b(using|with|for|to|in order to|when|during)\b/i.test(b) && b.length>40;
+    const hasTask = b.length > 30;
+    const count = [hasAction,hasResult,hasContext,hasTask].filter(Boolean).length;
+    return {text:b, hasAction, hasResult, hasContext, hasTask, score:count};
+  });
+  const avg = results.length ? results.reduce((a,r)=>a+r.score,0)/results.length : 0;
+  return {results, avgCoverage: pct((avg/4)*100)};
+}
+
+function countSyllables(word){
+  word = word.toLowerCase().replace(/[^a-z]/g,'');
+  if(!word) return 0;
+  const vowels = word.match(/[aeiouy]+/g);
+  let count = vowels ? vowels.length : 1;
+  if(word.endsWith('e')) count--;
+  return Math.max(count,1);
+}
+
+function analyzeGrammar(text){
+  const sentences = text.split(/[.!?]\s+/).filter(s=>s.trim().length>3);
+  const words = text.split(/\s+/).filter(Boolean);
+  const avgSentenceLen = sentences.length ? words.length/sentences.length : 0;
+  const passiveMatches = text.match(/\b(was|were|been|being|is|are)\s+\w+ed\b/gi) || [];
+  const longSentences = sentences.filter(s=>s.split(/\s+/).length>28).length;
+  // repeated word detection (immediate repeats)
+  const repeats = (text.match(/\b(\w+)\s+\1\b/gi)||[]).length;
+
+  const totalSyll = words.reduce((a,w)=>a+countSyllables(w),0);
+  const flesch = sentences.length && words.length
+    ? 206.835 - 1.015*(words.length/sentences.length) - 84.6*(totalSyll/words.length)
+    : 0;
+
+  const issues = [];
+  if(passiveMatches.length>3) issues.push(`${passiveMatches.length} passive-voice constructions detected`);
+  if(longSentences>0) issues.push(`${longSentences} sentence(s) longer than 28 words`);
+  if(repeats>0) issues.push(`${repeats} immediately-repeated word(s)`);
+  if(issues.length===0) issues.push('No major grammar red flags detected');
+
+  return {avgSentenceLen:Math.round(avgSentenceLen*10)/10, passiveCount:passiveMatches.length,
+    longSentences, repeats, flesch:Math.round(clamp(flesch,0,100)), issues, wordCount:words.length};
+}
+
+function detectCareerLevel(text){
+  const lower = text.toLowerCase();
+  let yearsMax = 0;
+  const yearMatches = [...text.matchAll(/(\d{1,2})\+?\s*years?/gi)];
+  for(const m of yearMatches) yearsMax = Math.max(yearsMax, parseInt(m[1],10));
+
+  // date range detection e.g. 2019 - 2023, 2020 - Present
+  const ranges = [...text.matchAll(/\b(19|20)\d{2}\b\s*[-–—to]+\s*(present|current|\b(19|20)\d{2}\b)/gi)];
+  let spanYears = 0;
+  const now = new Date().getFullYear();
+  for(const r of ranges){
+    const startY = parseInt(r[0].match(/\b(19|20)\d{2}\b/)[0],10);
+    const endStr = r[2];
+    const endY = /present|current/i.test(endStr) ? now : parseInt(endStr,10);
+    if(endY>=startY) spanYears += (endY-startY);
+  }
+  const estYears = Math.max(yearsMax, spanYears);
+
+  let level='Entry-Level / Junior', confidence=70;
+  if(/\b(senior|lead|principal|staff)\b/.test(lower)){level='Senior'; confidence=90;}
+  else if(/\b(intern|internship|student|fresher)\b/.test(lower) && estYears===0){level='Intern / Student'; confidence=85;}
+  else if(estYears>=8){level='Senior'; confidence=88;}
+  else if(estYears>=4){level='Mid-Level'; confidence=82;}
+  else if(estYears>=1){level='Junior'; confidence=78;}
+  else {level='Entry-Level / Junior'; confidence=65;}
+
+  return {level, confidence, estYears};
+}
+
+const SALARY_TABLE = {
+  US:{Intern:[35000,55000],'Entry-Level':[65000,90000],Junior:[75000,100000],'Mid-Level':[100000,140000],Senior:[140000,200000]},
+  PK:{Intern:[300000,600000],'Entry-Level':[600000,1200000],Junior:[900000,1800000],'Mid-Level':[1800000,3600000],Senior:[3600000,7200000]},
+  UK:{Intern:[18000,24000],'Entry-Level':[26000,35000],Junior:[30000,42000],'Mid-Level':[45000,65000],Senior:[65000,95000]},
+  EU:{Intern:[16000,24000],'Entry-Level':[28000,38000],Junior:[32000,45000],'Mid-Level':[45000,65000],Senior:[65000,95000]},
+  SA:{Intern:[24000,48000],'Entry-Level':[60000,96000],Junior:[84000,144000],'Mid-Level':[144000,240000],Senior:[240000,420000]},
+  IN:{Intern:[120000,300000],'Entry-Level':[400000,800000],Junior:[600000,1200000],'Mid-Level':[1200000,2400000],Senior:[2400000,4500000]}
+};
+function estimateSalary(level, country){
+  const key = level.includes('Intern')?'Intern':level.includes('Senior')?'Senior':level.includes('Mid')?'Mid-Level':level.includes('Junior')?'Junior':'Entry-Level';
+  const table = SALARY_TABLE[country] || SALARY_TABLE.US;
+  return {range:table[key], levelKey:key};
+}
+
+function computeRoleFit(resumeSkills){
+  const set = new Set(resumeSkills);
+  const scores = Object.entries(ROLE_PROFILES).map(([key,prof])=>{
+    const overlap = prof.core.filter(s=>set.has(s));
+    const score = pct((overlap.length/prof.core.length)*100);
+    return {key, label:prof.label, score, overlap};
+  }).sort((a,b)=>b.score-a.score);
+  return scores;
+}
+
+function computeHeatmap(sections, text, skillCount){
+  const rows = [];
+  const has = (k)=>sections[k];
+  const scoreFor = (present, lenGood)=>{
+    if(!present) return {score:20, tag:'red'};
+    if(lenGood) return {score:88, tag:'green'};
+    return {score:60, tag:'amber'};
+  };
+  const summaryLen = (text.match(/summary|profile|objective/i) ? text.length>300 : false);
+  rows.push({name:'Summary', ...scoreFor(has('summary'), true), note: has('summary') ? 'Present near the top — good first impression' : 'Missing — recruiters spend the first seconds here'});
+  rows.push({name:'Experience', ...scoreFor(has('experience'), true), note: has('experience') ? 'Clear section detected' : 'No clear experience header found'});
+  rows.push({name:'Projects', ...scoreFor(has('projects'), true), note: has('projects') ? 'Projects section detected' : 'Missing — strong signal for technical roles'});
+  rows.push({name:'Skills', ...scoreFor(has('skills'), skillCount>=6), note: has('skills') ? `${skillCount} recognizable technical keywords` : 'No dedicated skills section'});
+  rows.push({name:'Education', ...scoreFor(has('education'), true), note: has('education') ? 'Detected' : 'Missing — usually expected even briefly'});
+  return rows;
+}
+
+/* ---------- master pipeline ---------- */
+function runFullAnalysis(text, jdText, roleKey){
+  const skills = detectSkills(text);
+  const ats = computeATS(text);
+  const jd = computeJDMatch(text, jdText);
+  const freq = keywordFrequency(text);
+  const achievements = analyzeAchievements(text);
+  const verbs = analyzeActionVerbs(text);
+  const star = analyzeSTAR(text);
+  const grammar = analyzeGrammar(text);
+  const career = detectCareerLevel(text);
+  const roleFit = computeRoleFit(skills);
+  const sections = detectSections(text);
+  const heatmap = computeHeatmap(sections, text, skills.length);
+
+  const missingSections = Object.entries(sections).filter(([k,v])=>!v && k!=='links').map(([k])=>k);
+
+  // category scores (explainable, transparent formula)
+  const techScore = pct((skills.length/14)*100);
+  const expQuality = pct((verbs.strongCount*12) + (star.avgCoverage*0.4));
+  const projectsScore = sections.projects ? pct(70 + Math.min(skills.length,10)*2) : 25;
+  const grammarScore = pct(100 - grammar.passiveCount*4 - grammar.longSentences*5 - grammar.repeats*6);
+  const impactScore = pct(achievements.length ? (achievements.filter(a=>!a.weak).length/achievements.length)*100 : 40);
+
+  const overall = pct((ats.score*0.25) + (techScore*0.15) + (expQuality*0.2) + (projectsScore*0.1) + (grammarScore*0.15) + (impactScore*0.15));
+
+  // target role gap
+  const targetProfile = ROLE_PROFILES[roleKey];
+  const targetGaps = targetProfile.core.filter(s=>!skills.includes(s));
+
+  return {
+    text, skills, ats, jd, freq, achievements, verbs, star, grammar, career, roleFit, sections,
+    heatmap, missingSections, techScore, expQuality, projectsScore, grammarScore, impactScore, overall,
+    targetProfile, targetGaps, roleKey
+  };
+}
+
+/* ============================================================
+   RENDERING
+============================================================ */
+function renderAll(){
+  const a = STATE.analysis;
+  if(!a) return;
+  renderOverview(a);
+  renderATS(a);
+  renderSkills(a);
+  renderWriting(a);
+  renderDensity(a);
+  renderCareer(a);
+  renderChatSuggestions(a);
+  renderReport(a);
+}
+
+function verdictFor(score){
+  if(score>=85) return {t:'Strong — ready for competitive applications', c:'var(--green)'};
+  if(score>=65) return {t:'Solid — a few targeted fixes will meaningfully help', c:'var(--amber)'};
+  return {t:'Needs work — structural and content gaps are holding this back', c:'var(--red)'};
+}
+
+function renderOverview(a){
+  document.getElementById('overviewEmpty').style.display='none';
+  document.getElementById('overviewResults').style.display='block';
+
+  const circumference = 339;
+  const offset = circumference - (a.overall/100)*circumference;
+  document.getElementById('overallRingFg').style.strokeDashoffset = offset;
+  document.getElementById('overallScoreNum').textContent = a.overall;
+
+  const v = verdictFor(a.overall);
+  document.getElementById('overallVerdict').innerHTML = `<span style="color:${v.c}">${v.t}</span>`;
+  document.getElementById('overallSub').textContent = `Weighted across ATS compatibility, technical skills, experience quality, projects, grammar, and impact statements.`;
+
+  const cats = [
+    ['ATS Compatibility', a.ats.score],
+    ['Technical Skills', a.techScore],
+    ['Experience Quality', a.expQuality],
+    ['Projects', a.projectsScore],
+    ['Grammar', a.grammarScore],
+    ['Impact Statements', a.impactScore],
+  ];
+  document.getElementById('categoryScores').innerHTML = cats.map(([label,score])=>`
+    <div class="score-row">
+      <div class="label">${label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct(score)}%"></div></div>
+      <div class="val">${pct(score)}</div>
+    </div>`).join('');
+
+  document.getElementById('careerLevelMini').textContent = `${a.career.level}`;
+  document.getElementById('missingMini').innerHTML = a.missingSections.length
+    ? a.missingSections.map(s=>`<span class="pill pill-red" style="margin:2px;">${s}</span>`).join(' ')
+    : `<span class="pill pill-green">None — all standard sections present</span>`;
+  document.getElementById('fitMini').innerHTML = a.roleFit.slice(0,3).map(r=>`<span class="pill pill-violet" style="margin:2px;">${r.label} · ${r.score}%</span>`).join(' ');
+}
+
+function renderATS(a){
+  const ats = a.ats;
+  document.getElementById('atsScoreBlock').innerHTML = `
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;">
+      <div style="font-family:var(--display);font-size:34px;">${ats.score}<span style="font-size:14px;color:var(--text-faint);">/100</span></div>
+      <div class="pill ${ats.score>=80?'pill-green':ats.score>=60?'pill-amber':'pill-red'}">${ats.score>=80?'Low risk':ats.score>=60?'Some risk':'High risk'}</div>
+    </div>
+    <div class="grid grid-2" style="margin-bottom:14px;">
+      <div class="pill ${ats.contact.email?'pill-green':'pill-red'}">${ats.contact.email?'✓':'✗'} Email</div>
+      <div class="pill ${ats.contact.phone?'pill-green':'pill-red'}">${ats.contact.phone?'✓':'✗'} Phone</div>
+      <div class="pill ${ats.contact.linkedin?'pill-green':'pill-red'}">${ats.contact.linkedin?'✓':'✗'} LinkedIn</div>
+      <div class="pill ${ats.contact.github?'pill-green':'pill-red'}">${ats.contact.github?'✓':'✗'} GitHub</div>
+    </div>
+    ${ats.notes.map(n=>`<div style="font-size:12.5px;color:var(--text-dim);padding:6px 0;border-bottom:1px solid var(--border-soft);">${n.s<0?'⚠️':'✓'} ${esc(n.t)} ${n.s? `<span style="color:var(--red);font-family:var(--mono);">(${n.s})</span>`:''}</div>`).join('')}
+  `;
+
+  const jd = a.jd;
+  const jdBlock = document.getElementById('jdMatchBlock');
+  if(!jd){
+    jdBlock.innerHTML = `<div class="empty" style="padding:20px;"><p>No job description provided.</p></div>`;
+  } else {
+    jdBlock.innerHTML = `
+      <div style="font-family:var(--display);font-size:34px;margin-bottom:10px;">${jd.matchPct}<span style="font-size:14px;color:var(--text-faint);">% match</span></div>
+      <div class="tiny-label">Found (${jd.found.length})</div>
+      <div style="margin-bottom:10px;">${jd.found.length? jd.found.map(s=>`<span class="kw-tag kw-found">✓ ${esc(s)}</span>`).join(''):'<span style="color:var(--text-faint);font-size:12px;">None matched</span>'}</div>
+      <div class="tiny-label">Missing (${jd.missing.length})</div>
+      <div style="margin-bottom:10px;">${jd.missing.length? jd.missing.map(s=>`<span class="kw-tag kw-missing">✗ ${esc(s)}</span>`).join(''):'<span style="color:var(--text-faint);font-size:12px;">None — full coverage</span>'}</div>
+      ${jd.customTokens.length? `<div class="tiny-label">Other JD terms worth reviewing</div><div>${jd.customTokens.map(t=>`<span class="kw-tag" style="color:var(--text-dim);">${esc(t)}</span>`).join('')}</div>`:''}
+    `;
+  }
+
+  document.getElementById('sectionDetectBlock').innerHTML = `
+    <table class="simple"><thead><tr><th>Section</th><th>Status</th></tr></thead><tbody>
+    ${Object.entries(a.sections).filter(([k])=>k!=='links').map(([k,v])=>`
+      <tr><td style="text-transform:capitalize;">${k}</td><td>${v?'<span class="pill pill-green">Detected</span>':'<span class="pill pill-red">Missing</span>'}</td></tr>
+    `).join('')}
+    </tbody></table>
+  `;
+}
+
+function renderSkills(a){
+  document.getElementById('skillsFoundBlock').innerHTML = a.skills.length
+    ? a.skills.map(s=>`<span class="kw-tag kw-found">${esc(s)}</span>`).join('')
+    : `<p style="color:var(--text-faint);font-size:12.5px;">No recognizable technical keywords found. Consider adding a dedicated skills section.</p>`;
+
+  document.getElementById('skillsGapDesc').textContent = `Gaps against ${a.targetProfile.label} (change target role in the top bar).`;
+  document.getElementById('skillsGapBlock').innerHTML = a.targetGaps.length
+    ? a.targetGaps.map(s=>`<span class="kw-tag kw-missing">${esc(s)}</span>`).join('')
+    : `<p style="color:var(--green);font-size:12.5px;">Strong coverage — no major gaps detected for this role.</p>`;
+}
+
+function renderWriting(a){
+  document.getElementById('bulletBlock').innerHTML = a.achievements.length
+    ? a.achievements.map(bl=>`
+      <div class="bullet-block">
+        <div class="tiny-label">${bl.weak?'⚠ Needs strengthening':'✓ Reads well'}</div>
+        <div class="bullet-before">${esc(bl.original)}</div>
+        ${bl.weak? `<div class="bullet-after">${esc(bl.rewritten)}</div>` : ''}
+      </div>`).join('')
+    : `<p style="color:var(--text-faint);font-size:12.5px;">No bullet points detected. Use "-" or "•" prefixes for experience bullets to get suggestions.</p>`;
+
+  const v = a.verbs;
+  document.getElementById('verbBlock').innerHTML = `
+    <div class="score-row"><div class="label">Strong-verb bullets</div><div class="bar-track"><div class="bar-fill" style="width:${v.bulletsTotal? pct(v.strongCount/v.bulletsTotal*100):0}%"></div></div><div class="val">${v.strongCount}</div></div>
+    <div class="score-row"><div class="label">Weak-verb bullets</div><div class="bar-track"><div class="bar-fill" style="width:${v.bulletsTotal? pct(v.weakCount/v.bulletsTotal*100):0}%;background:linear-gradient(90deg,#f2617a,#f4b740);"></div></div><div class="val">${v.weakCount}</div></div>
+    ${v.weakHits.length? `<div class="tiny-label" style="margin-top:10px;">Weak words found</div><div>${v.weakHits.map(w=>`<span class="kw-tag kw-missing">${esc(w)}</span>`).join('')}</div>`:''}
+    <div class="tiny-label" style="margin-top:10px;">Try instead</div>
+    <div>${STRONG_VERBS.slice(0,8).map(w=>`<span class="kw-tag kw-found">${w}</span>`).join('')}</div>
+  `;
+
+  const star = a.star;
+  document.getElementById('starBlock').innerHTML = `
+    <div style="font-family:var(--display);font-size:28px;margin-bottom:10px;">${star.avgCoverage}<span style="font-size:13px;color:var(--text-faint);">% avg coverage</span></div>
+    ${star.results.slice(0,6).map(r=>`
+      <div style="padding:8px 0;border-bottom:1px solid var(--border-soft);font-size:12px;">
+        <div style="color:var(--text-dim);margin-bottom:4px;">${esc(r.text.slice(0,90))}${r.text.length>90?'…':''}</div>
+        <span class="pill ${r.hasTask?'pill-green':'pill-red'}">Task</span>
+        <span class="pill ${r.hasAction?'pill-green':'pill-red'}">Action</span>
+        <span class="pill ${r.hasContext?'pill-green':'pill-red'}">Context</span>
+        <span class="pill ${r.hasResult?'pill-green':'pill-red'}">Result</span>
+      </div>`).join('')}
+  `;
+
+  const g = a.grammar;
+  document.getElementById('grammarBlock').innerHTML = `
+    <div class="grid grid-4">
+      <div><div class="tiny-label">Readability</div><div style="font-family:var(--display);font-size:22px;">${g.flesch}</div></div>
+      <div><div class="tiny-label">Avg sentence length</div><div style="font-family:var(--display);font-size:22px;">${g.avgSentenceLen}w</div></div>
+      <div><div class="tiny-label">Passive voice</div><div style="font-family:var(--display);font-size:22px;">${g.passiveCount}</div></div>
+      <div><div class="tiny-label">Word count</div><div style="font-family:var(--display);font-size:22px;">${g.wordCount}</div></div>
+    </div>
+    <div style="margin-top:14px;">${g.issues.map(i=>`<div style="font-size:12.5px;color:var(--text-dim);padding:5px 0;">• ${esc(i)}</div>`).join('')}</div>
+  `;
+}
+
+function renderDensity(a){
+  const freq = a.freq;
+  const entries = Object.entries(freq).sort((x,y)=>y[1]-x[1]).slice(0,14);
+  const max = entries.length? entries[0][1] : 1;
+  document.getElementById('densityBlock').innerHTML = entries.length ? entries.map(([k,v])=>`
+    <div class="score-row">
+      <div class="label">${esc(k)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct(v/max*100)}%"></div></div>
+      <div class="val">${v}×</div>
+    </div>`).join('') + (entries.some(e=>e[1]>=8)? `<div class="pill pill-amber" style="margin-top:10px;">⚠ Possible keyword stuffing detected</div>`:'')
+    : `<p style="color:var(--text-faint);font-size:12.5px;">No keyword matches found.</p>`;
+
+  document.getElementById('heatmapBlock').innerHTML = a.heatmap.map(h=>`
+    <div class="heat-row">
+      <div class="heat-dot" style="background:${h.tag==='green'?'var(--green)':h.tag==='amber'?'var(--amber)':'var(--red)'}"></div>
+      <div class="name">${h.name}</div>
+      <div class="note">${esc(h.note)}</div>
+    </div>`).join('');
+}
+
+function renderCareer(a){
+  document.getElementById('careerBlock').innerHTML = `
+    <div style="font-family:var(--display);font-size:24px;margin-bottom:6px;">${a.career.level}</div>
+    <div style="color:var(--text-dim);font-size:12.5px;">Confidence: ${a.career.confidence}% · Estimated ${a.career.estYears || '0'} year(s) of experience detected from dates/phrasing</div>
+  `;
+
+  const country = document.getElementById('country').value;
+  const sal = estimateSalary(a.career.level, country);
+  document.getElementById('salaryBlock').innerHTML = `
+    <div style="font-family:var(--display);font-size:24px;">${sal.range[0].toLocaleString()} – ${sal.range[1].toLocaleString()}</div>
+    <div style="color:var(--text-faint);font-size:11.5px;margin-top:6px;">Rough bracket for a ${sal.levelKey} profile in ${document.getElementById('country').selectedOptions[0].textContent.replace('Salary: ','')}. Actual offers vary by company, specialization, and negotiation.</div>
+  `;
+
+  document.getElementById('fitBlock').innerHTML = `
+    <table class="simple"><thead><tr><th>Role</th><th>Fit</th><th>Matched skills</th></tr></thead><tbody>
+    ${a.roleFit.map(r=>`<tr>
+      <td>${r.label}</td>
+      <td><span class="pill ${r.score>=60?'pill-green':r.score>=35?'pill-amber':'pill-red'}">${r.score}%</span></td>
+      <td style="color:var(--text-faint);">${r.overlap.slice(0,5).join(', ')||'—'}</td>
+    </tr>`).join('')}
+    </tbody></table>
+  `;
+}
+
+/* ---------- GitHub analyzer ---------- */
+async function analyzeGithub(username){
+  const box = document.getElementById('ghResult');
+  box.innerHTML = `<p style="color:var(--text-faint);font-size:12.5px;">Fetching public repos for <b>${esc(username)}</b>…</p>`;
+  try{
+    const res = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&sort=updated`);
+    if(!res.ok) throw new Error(res.status===404?'User not found':'GitHub API error ('+res.status+')');
+    const repos = await res.json();
+    if(!Array.isArray(repos) || repos.length===0){
+      box.innerHTML = `<p style="color:var(--text-faint);">No public repositories found for this account.</p>`;
+      return;
+    }
+    const langs = {};
+    let stars=0, forks=0, described=0;
+    let mostRecent = null;
+    repos.forEach(r=>{
+      if(r.language){langs[r.language]=(langs[r.language]||0)+1;}
+      stars += r.stargazers_count||0;
+      forks += r.forks_count||0;
+      if(r.description) described++;
+      const pushed = new Date(r.pushed_at);
+      if(!mostRecent || pushed>mostRecent) mostRecent = pushed;
+    });
+    const langEntries = Object.entries(langs).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const daysSincePush = mostRecent ? Math.round((Date.now()-mostRecent)/86400000) : null;
+
+    let score = 0;
+    score += clamp(repos.length*2, 0, 25);
+    score += clamp(stars*1.5, 0, 20);
+    score += clamp(langEntries.length*4, 0, 20);
+    score += clamp((described/repos.length)*20, 0, 20);
+    score += daysSincePush!==null ? clamp(20 - Math.floor(daysSincePush/30)*3, 0, 20) : 0;
+    score = pct(score);
+
+    const topRepos = [...repos].sort((a,b)=>(b.stargazers_count||0)-(a.stargazers_count||0)).slice(0,5);
+
+    box.innerHTML = `
+      <div class="grid grid-4" style="margin-bottom:16px;">
+        <div><div class="tiny-label">GitHub Score</div><div style="font-family:var(--display);font-size:24px;">${score}</div></div>
+        <div><div class="tiny-label">Public repos</div><div style="font-family:var(--display);font-size:24px;">${repos.length}</div></div>
+        <div><div class="tiny-label">Total stars</div><div style="font-family:var(--display);font-size:24px;">${stars}</div></div>
+        <div><div class="tiny-label">Last push</div><div style="font-family:var(--display);font-size:24px;">${daysSincePush!==null? daysSincePush+'d ago':'—'}</div></div>
+      </div>
+      <div class="tiny-label">Top languages</div>
+      <div style="margin-bottom:14px;">${langEntries.map(([l,c])=>`<span class="kw-tag kw-found">${esc(l)} ×${c}</span>`).join('')}</div>
+      <div class="tiny-label">Top repositories</div>
+      ${topRepos.map(r=>`
+        <div class="gh-repo">
+          <div class="name">${esc(r.name)}</div>
+          <div class="desc">${esc(r.description||'No description provided')}</div>
+          <div class="meta"><span>⭐ ${r.stargazers_count}</span><span>🍴 ${r.forks_count}</span><span>${esc(r.language||'—')}</span></div>
+        </div>`).join('')}
+    `;
+  }catch(err){
+    box.innerHTML = `<p style="color:var(--red);font-size:12.5px;">${esc(err.message)}</p>`;
+  }
+}
+
+/* ---------- Compare ---------- */
+function renderCompare(){
+  if(!STATE.analysis || !STATE.analysis2){
+    document.getElementById('compareResult').innerHTML = `<p style="color:var(--text-faint);font-size:12.5px;">Add both a primary resume (Overview tab) and a second resume above, then click Compare.</p>`;
+    return;
+  }
+  const a = STATE.analysis, b = STATE.analysis2;
+  const rows = [
+    ['Overall', a.overall, b.overall],
+    ['ATS Compatibility', a.ats.score, b.ats.score],
+    ['Technical Skills', a.techScore, b.techScore],
+    ['Experience Quality', a.expQuality, b.expQuality],
+    ['Grammar', a.grammarScore, b.grammarScore],
+    ['Impact Statements', a.impactScore, b.impactScore],
+  ];
+  const winner = a.overall===b.overall ? 'Tie' : (a.overall>b.overall?'Resume A':'Resume B');
+  document.getElementById('compareResult').innerHTML = `
+    <div class="pill pill-violet" style="margin-bottom:12px;">Stronger overall: ${winner}</div>
+    <table class="simple"><thead><tr><th>Metric</th><th>Resume A</th><th>Resume B</th></tr></thead><tbody>
+    ${rows.map(([label,x,y])=>`<tr><td>${label}</td><td>${x} ${x>y?'▲':x<y?'▼':''}</td><td>${y} ${y>x?'▲':y<x?'▼':''}</td></tr>`).join('')}
+    </tbody></table>
+  `;
+}
+
+/* ---------- Chat ---------- */
+function pushMsg(role, text){
+  const win = document.getElementById('chatWindow');
+  const el = document.createElement('div');
+  el.className = 'msg '+role;
+  el.textContent = text;
+  win.appendChild(el);
+  win.scrollTop = win.scrollHeight;
+}
+function answerChat(q){
+  const a = STATE.analysis;
+  if(!a) return "Add and analyze a resume first on the Overview tab — then I can answer using your actual results.";
+  const lower = q.toLowerCase();
+
+  if(/ats/.test(lower) && /low|why|improve/.test(lower)){
+    const worst = a.ats.notes.filter(n=>n.s<0).sort((x,y)=>x.s-y.s).slice(0,3);
+    return worst.length
+      ? `Your ATS score is ${a.ats.score}/100. The biggest hits:\n` + worst.map(n=>`• ${n.t} (${n.s})`).join('\n')
+      : `Your ATS score is ${a.ats.score}/100 — no major structural issues found.`;
+  }
+  if(/project/.test(lower)){
+    return a.sections.projects
+      ? `Projects section detected. Score: ${a.projectsScore}/100. To push it higher, add measurable outcomes and the specific tools/stack for each project.`
+      : `No Projects section detected — that's a real gap for technical roles. Add 2-4 projects with the stack used and a measurable outcome.`;
+  }
+  if(/rewrite|experience/.test(lower)){
+    const weak = a.achievements.filter(x=>x.weak).slice(0,3);
+    return weak.length
+      ? `Here are rewrite suggestions for your weaker bullets:\n` + weak.map(w=>`• ${w.original} → ${w.rewritten}`).join('\n')
+      : `Your experience bullets already read fairly strong — no obvious rewrites needed.`;
+  }
+  if(/job|fit|suit/.test(lower)){
+    return `Best-fit roles based on detected skills:\n` + a.roleFit.slice(0,3).map(r=>`• ${r.label} — ${r.score}% match`).join('\n');
+  }
+  if(/enough|good enough|ready/.test(lower)){
+    const v = verdictFor(a.overall);
+    return `Overall score: ${a.overall}/100 — ${v.t}. That's a general signal, not a guarantee for any specific company's bar.`;
+  }
+  if(/salary|pay|compensation/.test(lower)){
+    const country = document.getElementById('country').value;
+    const sal = estimateSalary(a.career.level, country);
+    return `Rough estimated range for a ${a.career.level} profile: ${sal.range[0].toLocaleString()}–${sal.range[1].toLocaleString()}. Treat this as a market ballpark, not a quote.`;
+  }
+  if(/skill/.test(lower) && /missing|gap|add/.test(lower)){
+    return a.targetGaps.length
+      ? `Against ${a.targetProfile.label}, consider adding: ` + a.targetGaps.slice(0,8).join(', ')
+      : `Strong skill coverage for ${a.targetProfile.label} already — no major gaps.`;
+  }
+  return `I can answer questions about: ATS score, project section, experience rewrites, role fit, salary estimate, and skill gaps. Try one of the suggestion chips below.`;
+}
+function renderChatSuggestions(){
+  const chips = ['Why is my ATS score low?','How do I improve my projects?','Rewrite my experience.','What jobs fit my resume?','Is this enough to apply?','What skills am I missing?'];
+  document.getElementById('chatSuggestions').innerHTML = chips.map(c=>`<span class="chip">${c}</span>`).join('');
+  document.querySelectorAll('#chatSuggestions .chip').forEach(el=>{
+    el.onclick = ()=>{ pushMsg('user', el.textContent); pushMsg('bot', answerChat(el.textContent)); };
+  });
+}
+
+/* ---------- Report ---------- */
+function renderReport(a){
+  const v = verdictFor(a.overall);
+  document.getElementById('reportPreview').innerHTML = `
+    <div class="card" style="background:var(--surface-2);">
+      <h2 class="sec-title">Summary — Overall ${a.overall}/100</h2>
+      <p class="sec-desc" style="color:${v.c}">${v.t}</p>
+      <div class="grid grid-3">
+        <div><div class="tiny-label">Career Level</div><div>${a.career.level}</div></div>
+        <div><div class="tiny-label">ATS Score</div><div>${a.ats.score}/100</div></div>
+        <div><div class="tiny-label">Best Fit</div><div>${a.roleFit[0].label} (${a.roleFit[0].score}%)</div></div>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="tiny-label">Missing Sections</div>
+        <div>${a.missingSections.length? a.missingSections.join(', ') : 'None'}</div>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="tiny-label">Top skill gaps for ${a.targetProfile.label}</div>
+        <div>${a.targetGaps.slice(0,8).join(', ')||'None — strong coverage'}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   WIRING
+============================================================ */
+function switchTab(tab){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.tab===tab));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+tab));
+  const titles = {
+    overview:['Overview','Upload a resume to generate a full hiring-manager style breakdown.'],
+    ats:['ATS & JD Match','Structural compatibility and job-description keyword matching.'],
+    skills:['Skills & Gaps','What you have, and what a target role expects.'],
+    writing:['Writing Quality','Bullet strength, verbs, STAR coverage, grammar and readability.'],
+    density:['Keywords & Heatmap','Keyword frequency and simulated recruiter attention.'],
+    career:['Career & Salary','Seniority detection, salary bracket, and role fit.'],
+    github:['GitHub Analyzer','Live public-repo signal via the GitHub API.'],
+    compare:['Compare Resumes','Two resumes, scored side by side.'],
+    chat:['Resume Chat','Ask questions grounded in your computed results.'],
+    export:['Export Report','A clean printable summary of the full analysis.']
+  };
+  document.getElementById('pageTitle').textContent = titles[tab][0];
+  document.getElementById('pageDesc').textContent = titles[tab][1];
+}
+document.getElementById('nav').addEventListener('click', e=>{
+  const item = e.target.closest('.nav-item');
+  if(item) switchTab(item.dataset.tab);
+});
+
+function setupDropzone(dzId, inputId, onText, chipId){
+  const dz = document.getElementById(dzId);
+  const input = document.getElementById(inputId);
+  dz.addEventListener('click', ()=>input.click());
+  ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault(); dz.classList.add('drag');}));
+  ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault(); dz.classList.remove('drag');}));
+  dz.addEventListener('drop', e=>{ if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+  input.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+  async function handleFile(file){
+    document.getElementById(chipId).innerHTML = `<span class="file-chip">⏳ Parsing ${esc(file.name)}…</span>`;
+    try{
+      const text = await extractText(file);
+      onText(text, file.name);
+      document.getElementById(chipId).innerHTML = `<span class="file-chip">📄 ${esc(file.name)} <span class="x" data-clear="${chipId}">✕</span></span>`;
+    }catch(err){
+      document.getElementById(chipId).innerHTML = `<span class="file-chip" style="color:var(--red);">⚠ ${esc(err.message)}</span>`;
+    }
+  }
+}
+setupDropzone('dz1','fileInput1',(text,name)=>{ STATE.resumeText=text; STATE.resumeName=name; document.getElementById('resumeText').value=text; checkRunnable(); },'fileChip1');
+setupDropzone('dz2','fileInput2',(text,name)=>{ STATE.resumeText2=text; STATE.resumeName2=name; document.getElementById('resumeText2').value=text; },'fileChip2');
+
+document.addEventListener('click', e=>{
+  if(e.target.dataset && e.target.dataset.clear){
+    const id = e.target.dataset.clear;
+    document.getElementById(id).innerHTML='';
+  }
+});
+
+document.getElementById('resumeText').addEventListener('input', e=>{ STATE.resumeText = e.target.value; checkRunnable(); });
+document.getElementById('resumeText2').addEventListener('input', e=>{ STATE.resumeText2 = e.target.value; });
+document.getElementById('jdText').addEventListener('input', e=>{ STATE.jdText = e.target.value; });
+
+function checkRunnable(){
+  document.getElementById('runBtn').disabled = !(STATE.resumeText && STATE.resumeText.trim().length>50);
+}
+
+document.getElementById('runBtn').addEventListener('click', ()=>{
+  const roleKey = document.getElementById('targetRole').value;
+  document.getElementById('runBtn').textContent = 'Analyzing…';
+  document.getElementById('runBtn').disabled = true;
+  setTimeout(()=>{
+    STATE.analysis = runFullAnalysis(STATE.resumeText, STATE.jdText, roleKey);
+    renderAll();
+    document.getElementById('runBtn').textContent = 'Re-run Analysis';
+    document.getElementById('runBtn').disabled = false;
+    pushMsg('bot', `Analysis complete. Overall score: ${STATE.analysis.overall}/100. Ask me anything about it below.`);
+  }, 350);
+});
+
+document.getElementById('targetRole').addEventListener('change', ()=>{
+  if(STATE.analysis){
+    STATE.analysis = runFullAnalysis(STATE.resumeText, STATE.jdText, document.getElementById('targetRole').value);
+    renderAll();
+  }
+});
+document.getElementById('country').addEventListener('change', ()=>{ if(STATE.analysis) renderCareer(STATE.analysis); });
+
+document.getElementById('ghRunBtn').addEventListener('click', ()=>{
+  const u = document.getElementById('ghUsername').value.trim();
+  if(u) analyzeGithub(u);
+});
+
+document.getElementById('compareBtn').addEventListener('click', ()=>{
+  if(STATE.resumeText2 && STATE.resumeText2.trim().length>50){
+    STATE.analysis2 = runFullAnalysis(STATE.resumeText2, STATE.jdText, document.getElementById('targetRole').value);
+  }
+  renderCompare();
+});
+
+document.getElementById('chatSend').addEventListener('click', sendChat);
+document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChat(); });
+function sendChat(){
+  const input = document.getElementById('chatInput');
+  const q = input.value.trim();
+  if(!q) return;
+  pushMsg('user', q);
+  pushMsg('bot', answerChat(q));
+  input.value='';
+}
+pushMsg('bot', "Hi — I'm the resume chat assistant. Add a resume on the Overview tab and run the analysis, then ask me anything about your results.");
+
+document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+renderChatSuggestions();
+</script>
+</body>
 </html>
